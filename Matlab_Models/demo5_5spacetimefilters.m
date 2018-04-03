@@ -15,7 +15,7 @@ clear;
 clf; 
 initpaths;
 %%
-celltype = 'simple';
+celltype = 'complex';
 data_path = strcat('../RustV1/', celltype, '/data/');
 rpt_path = strcat('../RustV1/', celltype, '/repeats/');
 data_dir = dir(data_path);
@@ -32,12 +32,24 @@ perf_cbf_bps = zeros(n_cells, nfilts_cbf);
 
 nfilts_rbf = 3; % number of RBF filters to compute; max supported is 3
 perf_rbf_r2 = zeros(n_cells, nfilts_rbf); 
-perf_rbf_bps = zeros(n_cells, nfilts_rbf); 
+perf_rbf_bps = zeros(n_cells, nfilts_rbf);
+
+
+% load from checkpoint
+load_frm_chkpt = true;
+if load_frm_ckpt == true
+    perf_istac_r2 = csvread(strcat('../SavedResults/',celltype,'istac_r2.csv'));
+    perf_istac_bps = csvread(strcat('../SavedResults/',celltype,'istac_bps.csv'));
+    perf_cbf_r2 = csvread(strcat('../SavedResults/',celltype,'cbf_r2.csv'));
+    perf_cbf_bps = csvread(strcat('../SavedResults/',celltype,'cbf_bps.csv'));
+    perf_rbf_r2 = csvread(strcat('../SavedResults/',celltype,'rbf_r2.csv'));
+    perf_rbf_bps = csvread(strcat('../SavedResults/',celltype,'rbf_bps.csv'));
+end
 
 
 for c = 1:n_cells
 
-    disp(strcat('Starting Cell ', string(c), ' of ', string(n_cells)));
+    disp(strcat("Starting Cell ", string(c), " of ", string(n_cells)));
     
     % get training/test data
     load(strcat(data_path,data_dir(c+2).name));
@@ -90,22 +102,27 @@ for c = 1:n_cells
     fprintf('\nComputing iSTAC estimate\n');
     [istacFilts,vals,DD] = compiSTAC(sta(:),stc,rawmu,rawcov,nfilts_istac); % find iSTAC filters
     
+    
+    
     % Compute training and test log-likelihood for each sized model
     LListac_tr = zeros(nfilts_istac,1);
     LListac_tst = zeros(nfilts_istac,1);
     istac_r2s = zeros(nfilts_istac,1);
     for jj = 1:nfilts_istac
-        % Fit iSTAC model nonlinearity using varying # of filters
-        pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
-        % compute train and test log-likelihood
-        LListac_tr(jj) = logli_LNP(pp_istac,Stim_tr,sps_tr); % training log-likelihood
-        [LListac_tst(jj),rate_istac] = logli_LNP(pp_istac,Stim_tst,sps_tst); % test log-likelihood
-        r = corr2(rate_istac, sps_tst);
-        istac_r2s(jj) = r * r;
         
-        perf_istac_r2(jj,c) = r*r; 
-        
-        perf_istac_bps(jj,c) = f2(LListac_tst(jj)); 
+        if perf_istac_bps(jj,c) ~= 0 % don't overwrite 
+            % Fit iSTAC model nonlinearity using varying # of filters
+            pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
+            % compute train and test log-likelihood
+            LListac_tr(jj) = logli_LNP(pp_istac,Stim_tr,sps_tr); % training log-likelihood
+            [LListac_tst(jj),rate_istac] = logli_LNP(pp_istac,Stim_tst,sps_tst); % test log-likelihood
+            r = corr2(rate_istac, sps_tst);
+            istac_r2s(jj) = r * r;
+            
+            perf_istac_r2(jj,c) = r*r;
+            
+            perf_istac_bps(jj,c) = f2(LListac_tst(jj));
+        end
     end
     istac_r = corr2(rate_istac, sps_tst);
     istac_r2 = istac_r * istac_r; % R2
@@ -165,15 +182,20 @@ for c = 1:n_cells
     LLcbf_tst = zeros(nfilts_cbf,1);
     cbf_r2s = zeros(nfilts_cbf,1);
     for jj = 1:nfilts_cbf
-        % compute train and test log-likelihood
-        LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
-        [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
-        r = corr2(rate_cbf, sps_tst);
-        cbf_r2s(jj) = r * r;
         
-        perf_cbf_r2(jj,c) = r*r; 
+        if perf_cbf_bps(jj,c) ~= 0
         
-        perf_cbf_bps(jj,c) = f2(LLcbf_tst(jj)); 
+            % compute train and test log-likelihood
+            LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
+            [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
+            r = corr2(rate_cbf, sps_tst);
+            cbf_r2s(jj) = r * r;
+            
+            perf_cbf_r2(jj,c) = r*r;
+            
+            perf_cbf_bps(jj,c) = f2(LLcbf_tst(jj));
+        
+        end
     end
     
     % R-Squared
@@ -217,15 +239,20 @@ for c = 1:n_cells
     LLrbf_tst = zeros(nfilts_rbf,1);
     rbf_r2s = zeros(nfilts_rbf,1);
     for jj = 1:nfilts_rbf
-        % compute train and test log-likelihood
-        LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
-        [LLrbf_tst(jj),rate_rbf] = logli_LNP(pprbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
-        r = corr2(rate_rbf, sps_tst);
-        rbf_r2s(jj) = r * r;
         
-        perf_rbf_r2 = r * r; 
+        if perf_rbf_bps(jj,c) ~= 0
         
-        perf_rbf_bps(jj,c) = f2(LLrbf_tst(jj)); 
+            % compute train and test log-likelihood
+            LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
+            [LLrbf_tst(jj),rate_rbf] = logli_LNP(pprbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
+            r = corr2(rate_rbf, sps_tst);
+            rbf_r2s(jj) = r * r;
+            
+            perf_rbf_r2(jj,c) = r * r;
+            
+            perf_rbf_bps(jj,c) = f2(LLrbf_tst(jj));
+            
+        end
     end
     
     % R-squared
@@ -238,7 +265,8 @@ for c = 1:n_cells
     pprbf = pprbf_array{imax_rbf}; % select this model
     
     % Compute true filters reconstructed in basis of RBF filter estimates
-    filts_rbf = reshape(pprbf.k,nkt*nkx,nfilts_rbf);  % filter estimates
+    %%
+    %filts_rbf = reshape(pprbf.k,nkt*nkx,size(pprbf.k,3));  % filter estimates
     %%
     % REPEAT PREDICTION
     % stim_rpt = csvread('/Users/TedMoskovitz/Thesis/Models/NeuralNets/Data/RustV1dat/X_rpt_stim_c.csv');
@@ -251,10 +279,10 @@ for c = 1:n_cells
     % filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
     % filt_dir = filt_dir + "/3f_";
     %%
-    filts_rbf = reshape(pprbf_array{end}.k,nkt*nkx,nfilts_rbf);
+    %filts_rbf = reshape(pprbf_array{end}.k,nkt*nkx,nfilts_rbf);
     
     
-    rfilt = reshape(filts_rbf(:,1:nfilts_rbf), [nfilts_rbf,nkx*nkt]);
+    %rfilt = reshape(filts_rbf(:,1:nfilts_rbf), [nfilts_rbf,nkx*nkt]);
     %csvwrite(filt_dir + "rbf.csv", rfilt);
     
     %% 6. ==== Compute training and test performance in bits/spike =====
@@ -303,80 +331,80 @@ for c = 1:n_cells
 %     LL0_tr =   nsp_tr*log(muspike_tr) - slen_tr*muspike_tr; % log-likelihood, training data
 %     LL0_tst = nsp_tst*log(muspike_tst) - slen_tst*muspike_tst; % log-likelihood test data
 %     
-    % Functions to compute single-spike informations
+%     % Functions to compute single-spike informations
     %f1 = @(x)((x-LL0_tr)/nsp_tr/log(2)); % compute training single-spike info
     %f2 = @(x)((x-LL0_tst)/nsp_tst/log(2)); % compute test single-spike info
     % (Divide by log 2 to get 'bits' instead of 'nats')
     
     % Compute single-spike info for each model
-    SSinf_istac_tr = f1(LListac_tr);   % training data
-    SSinf_istac_tst = f2(LListac_tst); % test data
-    SSinf_cbf_tr = f1(LLcbf_tr);   % training data
-    SSinf_cbf_tst = f2(LLcbf_tst); % test data
-    SSinf_rbf_tr = f1(LLrbf_tr);   % training data
-    SSinf_rbf_tst = f2(LLrbf_tst); % test data
-    SSr2_tst = [istac_r2, cbf_r2, rbf_r2];
-    
-    % save performance
-    %dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/performance/performance_c1_lnp_";
-    %csvwrite(dir + "istac.csv", SSinf_istac_tst);
-    %csvwrite(dir + "cbf.csv", SSinf_cbf_tst);
-    %csvwrite(dir + "rbf.csv", SSinf_rbf_tst);
-    %
-    % csvwrite(dir + "istac_r2.csv", istac_r2s);
-    % csvwrite(dir + "cbf_r2.csv", cbf_r2s);
-    % csvwrite(dir + "rbf_r2.csv", rbf_r2s);
-    
-    
-    SSinfo_tr = [SSinf_istac_tr(end), SSinf_cbf_tr(end),SSinf_rbf_tr(end)];%SSinf_rbf_tr(end)];
-    SSinfo_tst = [SSinf_istac_tst(end), SSinf_cbf_tst(end),SSinf_rbf_tst(end)];%SSinf_rbf_tst(end)];
-    
-    fprintf('\nSingle-spike information (bits/spike):\n');
-    fprintf('------------------------------------- \n');
-    fprintf('Train: istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSinfo_tr);
-    fprintf('Test:  istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSinfo_tst);
-    fprintf('R-2:   istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSr2_tst);
-    
-    
-    % DONE
-    amp=10;
-    fs=20500;  % sampling frequency
-    duration=1;
-    freq=100;
-    values=0:1/fs:duration;
-    a=amp*sin(2*pi* freq*values);
-    %sound(a)
-    % Plot test single-spike information
-    % Plot filter R^2 values
-    subplot(5,5,21);
-    axlabels = {'istac','cbf','rbf'};
-    % bar(Rsqvals); ylabel('R^2'); title('filter R^2');
-    % set(gca,'xticklabel',axlabels, 'ylim', [.9*min(Rsqvals) 1.1*max(Rsqvals)]);
-    
-    subplot(5,5,21:23);
-    cols = get(gca,'colororder');
-    h = plot(1:nfilts_istac,SSinf_istac_tst,'-o',...
-        1:nfilts_cbf,SSinf_cbf_tst,'-o',...
-        1:nfilts_rbf,SSinf_rbf_tst,'-o',...
-        1:nfilts_istac,SSinf_istac_tr,'o--',...
-        1:nfilts_cbf,SSinf_cbf_tr,'o--',...
-        1:nfilts_rbf,SSinf_rbf_tr,'o--', 'linewidth', 2);
-    set(h(4),'color',cols(1,:));
-    set(h(5),'color',cols(2,:));
-    set(h(6),'color',cols(3,:)); axis tight;
-    ylabel('bits / sp'); title('test single spike info');
-    xlabel('# filters'); legend('istac','cbf','rbf');
-    title('train and test log-likelihood');
-    
-    % Plot some rate predictions for first 100 bins
-    subplot(5,5,24:25);
-    ii = 1:100;
-    stem(ii, sps_tst(ii)); hold on;
-    plot(ii,rate_istac(ii)/RefreshRate,ii,rate_cbf(ii)/RefreshRate,ii,rate_rbf(ii)/RefreshRate, 'linewidth',2);
-    title('rate predictions on test data (3-filter models)');
-    legend('istac', 'ml-cbf','ml-rbf');
-    ylabel('rate (sp/s)'); xlabel('time bin');
-    
+%     SSinf_istac_tr = f1(LListac_tr);   % training data
+%     SSinf_istac_tst = f2(LListac_tst); % test data
+%     SSinf_cbf_tr = f1(LLcbf_tr);   % training data
+%     SSinf_cbf_tst = f2(LLcbf_tst); % test data
+%     SSinf_rbf_tr = f1(LLrbf_tr);   % training data
+%     SSinf_rbf_tst = f2(LLrbf_tst); % test data
+%     SSr2_tst = [istac_r2, cbf_r2, rbf_r2];
+%     
+%     save performance
+%     dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/performance/performance_c1_lnp_";
+%     csvwrite(dir + "istac.csv", SSinf_istac_tst);
+%     csvwrite(dir + "cbf.csv", SSinf_cbf_tst);
+%     csvwrite(dir + "rbf.csv", SSinf_rbf_tst);
+%     
+%     csvwrite(dir + "istac_r2.csv", istac_r2s);
+%     csvwrite(dir + "cbf_r2.csv", cbf_r2s);
+%     csvwrite(dir + "rbf_r2.csv", rbf_r2s);
+%     
+%     
+%     SSinfo_tr = [SSinf_istac_tr(end), SSinf_cbf_tr(end),SSinf_rbf_tr(end)];%SSinf_rbf_tr(end)];
+%     SSinfo_tst = [SSinf_istac_tst(end), SSinf_cbf_tst(end),SSinf_rbf_tst(end)];%SSinf_rbf_tst(end)];
+%     
+%     fprintf('\nSingle-spike information (bits/spike):\n');
+%     fprintf('------------------------------------- \n');
+%     fprintf('Train: istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSinfo_tr);
+%     fprintf('Test:  istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSinfo_tst);
+%     fprintf('R-2:   istac: %.2f  cbf:%.2f  rbf:%.2f\n', SSr2_tst);
+%     
+%     
+% %     DONE
+%     amp=10;
+%     fs=20500;  % sampling frequency
+%     duration=1;
+%     freq=100;
+%     values=0:1/fs:duration;
+%     a=amp*sin(2*pi* freq*values);
+%     sound(a)
+%     Plot test single-spike information
+%     Plot filter R^2 values
+%     subplot(5,5,21);
+%     axlabels = {'istac','cbf','rbf'};
+%     bar(Rsqvals); ylabel('R^2'); title('filter R^2');
+%     set(gca,'xticklabel',axlabels, 'ylim', [.9*min(Rsqvals) 1.1*max(Rsqvals)]);
+%     
+%     subplot(5,5,21:23);
+%     cols = get(gca,'colororder');
+%     h = plot(1:nfilts_istac,SSinf_istac_tst,'-o',...
+%         1:nfilts_cbf,SSinf_cbf_tst,'-o',...
+%         1:nfilts_rbf,SSinf_rbf_tst,'-o',...
+%         1:nfilts_istac,SSinf_istac_tr,'o--',...
+%         1:nfilts_cbf,SSinf_cbf_tr,'o--',...
+%         1:nfilts_rbf,SSinf_rbf_tr,'o--', 'linewidth', 2);
+%     set(h(4),'color',cols(1,:));
+%     set(h(5),'color',cols(2,:));
+%     set(h(6),'color',cols(3,:)); axis tight;
+%     ylabel('bits / sp'); title('test single spike info');
+%     xlabel('# filters'); legend('istac','cbf','rbf');
+%     title('train and test log-likelihood');
+%     
+%     Plot some rate predictions for first 100 bins
+%     subplot(5,5,24:25);
+%     ii = 1:100;
+%     stem(ii, sps_tst(ii)); hold on;
+%     plot(ii,rate_istac(ii)/RefreshRate,ii,rate_cbf(ii)/RefreshRate,ii,rate_rbf(ii)/RefreshRate, 'linewidth',2);
+%     title('rate predictions on test data (3-filter models)');
+%     legend('istac', 'ml-cbf','ml-rbf');
+%     ylabel('rate (sp/s)'); xlabel('time bin');
+%     
     
     
     %% nonlin experiment
@@ -438,4 +466,13 @@ for c = 1:n_cells
     % xlabel('filter 1 axis');ylabel('filter 2 axis');
     % zlabel('spike rate (sps/sec)'); title('2D nn nonlinearity');
     %
+    
+    disp("Saving Checkpoint..."); 
+    csvwrite(strcat('../SavedResults/',celltype,'istac_r2.csv'), perf_istac_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'istac_bps.csv'), perf_istac_bps);
+    csvwrite(strcat('../SavedResults/',celltype,'cbf_r2.csv'), perf_cbf_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'cbf_bps.csv'), perf_cbf_bps);
+    csvwrite(strcat('../SavedResults/',celltype,'rbf_r2.csv'), perf_rbf_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'rbf_bps.csv'), perf_rbf_bps);
+    
 end
