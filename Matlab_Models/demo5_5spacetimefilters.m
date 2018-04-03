@@ -36,8 +36,8 @@ perf_rbf_bps = zeros(n_cells, nfilts_rbf);
 
 
 % load from checkpoint
-load_frm_chkpt = true;
-if load_frm_ckpt == true
+load_frm_chkpt = false;
+if load_frm_chkpt == true
     perf_istac_r2 = csvread(strcat('../SavedResults/',celltype,'istac_r2.csv'));
     perf_istac_bps = csvread(strcat('../SavedResults/',celltype,'istac_bps.csv'));
     perf_cbf_r2 = csvread(strcat('../SavedResults/',celltype,'cbf_r2.csv'));
@@ -110,7 +110,7 @@ for c = 1:n_cells
     istac_r2s = zeros(nfilts_istac,1);
     for jj = 1:nfilts_istac
         
-        if perf_istac_bps(jj,c) ~= 0 % don't overwrite 
+        if perf_istac_bps(jj,c) == 0 % don't overwrite 
             % Fit iSTAC model nonlinearity using varying # of filters
             pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
             % compute train and test log-likelihood
@@ -124,8 +124,8 @@ for c = 1:n_cells
             perf_istac_bps(jj,c) = f2(LListac_tst(jj));
         end
     end
-    istac_r = corr2(rate_istac, sps_tst);
-    istac_r2 = istac_r * istac_r; % R2
+    %istac_r = corr2(rate_istac, sps_tst);
+    %istac_r2 = istac_r * istac_r; % R2
 
     
     % save filters
@@ -183,7 +183,7 @@ for c = 1:n_cells
     cbf_r2s = zeros(nfilts_cbf,1);
     for jj = 1:nfilts_cbf
         
-        if perf_cbf_bps(jj,c) ~= 0
+        if perf_cbf_bps(jj,c) == 0
         
             % compute train and test log-likelihood
             LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
@@ -199,8 +199,8 @@ for c = 1:n_cells
     end
     
     % R-Squared
-    cbf_r = corr2(rate_cbf, sps_tst);
-    cbf_r2 = cbf_r * cbf_r;
+    %cbf_r = corr2(rate_cbf, sps_tst);
+    %cbf_r2 = cbf_r * cbf_r;
     
     % save filters
 %     filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
@@ -240,7 +240,7 @@ for c = 1:n_cells
     rbf_r2s = zeros(nfilts_rbf,1);
     for jj = 1:nfilts_rbf
         
-        if perf_rbf_bps(jj,c) ~= 0
+        if perf_rbf_bps(jj,c) == 0
         
             % compute train and test log-likelihood
             LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
@@ -256,8 +256,8 @@ for c = 1:n_cells
     end
     
     % R-squared
-    rbf_r = corr2(rate_rbf, sps_tst);
-    rbf_r2 = rbf_r * rbf_r;
+    %rbf_r = corr2(rate_rbf, sps_tst);
+    %rbf_r2 = rbf_r * rbf_r;
     
     % Determine which of these models is best based on xv log-likelihood
     [~,imax_rbf] = max(LLrbf_tst);
