@@ -110,7 +110,7 @@ for c = 1:n_cells
     istac_r2s = zeros(nfilts_istac,1);
     for jj = 1:nfilts_istac
         
-        if perf_istac_bps(jj,c) == 0 % don't overwrite 
+        if perf_istac_bps(c,jj) == 0 % don't overwrite 
             % Fit iSTAC model nonlinearity using varying # of filters
             pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
             % compute train and test log-likelihood
@@ -119,9 +119,9 @@ for c = 1:n_cells
             r = corr2(rate_istac, sps_tst);
             istac_r2s(jj) = r * r;
             
-            perf_istac_r2(jj,c) = r*r;
+            perf_istac_r2(c,jj) = r*r;
             
-            perf_istac_bps(jj,c) = f2(LListac_tst(jj));
+            perf_istac_bps(c,jj) = f2(LListac_tst(jj));
         end
     end
     %istac_r = corr2(rate_istac, sps_tst);
@@ -183,7 +183,7 @@ for c = 1:n_cells
     cbf_r2s = zeros(nfilts_cbf,1);
     for jj = 1:nfilts_cbf
         
-        if perf_cbf_bps(jj,c) == 0
+        if perf_cbf_bps(c,jj) == 0
         
             % compute train and test log-likelihood
             LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
@@ -191,9 +191,9 @@ for c = 1:n_cells
             r = corr2(rate_cbf, sps_tst);
             cbf_r2s(jj) = r * r;
             
-            perf_cbf_r2(jj,c) = r*r;
+            perf_cbf_r2(c,jj) = r*r;
             
-            perf_cbf_bps(jj,c) = f2(LLcbf_tst(jj));
+            perf_cbf_bps(c,jj) = f2(LLcbf_tst(jj));
         
         end
     end
@@ -240,7 +240,7 @@ for c = 1:n_cells
     rbf_r2s = zeros(nfilts_rbf,1);
     for jj = 1:nfilts_rbf
         
-        if perf_rbf_bps(jj,c) == 0
+        if perf_rbf_bps(c,jj) == 0
         
             % compute train and test log-likelihood
             LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
@@ -248,9 +248,9 @@ for c = 1:n_cells
             r = corr2(rate_rbf, sps_tst);
             rbf_r2s(jj) = r * r;
             
-            perf_rbf_r2(jj,c) = r * r;
+            perf_rbf_r2(c,jj) = r * r;
             
-            perf_rbf_bps(jj,c) = f2(LLrbf_tst(jj));
+            perf_rbf_bps(c,jj) = f2(LLrbf_tst(jj));
             
         end
     end
@@ -468,11 +468,11 @@ for c = 1:n_cells
     %
     
     disp("Saving Checkpoint..."); 
-    csvwrite(strcat('../SavedResults/',celltype,'istac_r2.csv'), perf_istac_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'istac_bps.csv'), perf_istac_bps);
-    csvwrite(strcat('../SavedResults/',celltype,'cbf_r2.csv'), perf_cbf_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'cbf_bps.csv'), perf_cbf_bps);
-    csvwrite(strcat('../SavedResults/',celltype,'rbf_r2.csv'), perf_rbf_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'rbf_bps.csv'), perf_rbf_bps);
+    csvwrite(strcat('../SavedResults/',celltype,'_istac_r2.csv'), perf_istac_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'_istac_bps.csv'), perf_istac_bps);
+    csvwrite(strcat('../SavedResults/',celltype,'_cbf_r2.csv'), perf_cbf_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'_cbf_bps.csv'), perf_cbf_bps);
+    csvwrite(strcat('../SavedResults/',celltype,'_rbf_r2.csv'), perf_rbf_r2);
+    csvwrite(strcat('../SavedResults/',celltype,'_rbf_bps.csv'), perf_rbf_bps);
     
 end

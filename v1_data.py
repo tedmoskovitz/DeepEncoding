@@ -12,7 +12,7 @@ class V1:
 
 	def __init__(self, cell, cell_num, 
                  n_frames=16, spk_thresh=None, flatten=True,
-                 shuff=True, gen_new=True):
+                 shuff=True, gen_new=True, verbose=True):
 		"""
 		cell = 'simple' or 'complex'
 		spk_thresh if want to threshold spike counts
@@ -25,25 +25,27 @@ class V1:
 		self.n_cells = -1
 		self.n_frames = n_frames
 		if gen_new:
-			print ('building data...')
+			if verbose: print ('building data...');
 			self.generate_new()
-			print ('fetching repeat data...')
+			if verbose: print ('fetching repeat data...');
 			self.gen_rpt()
 		else: 
 			print ('retrieving data...')
 			print ('This action is unsupported at this time.')
-		print ('done.')
+		if verbose: print ('done.'); 
 
         
 	def gen_rpt(self):
-		path = './RustV1/' + self.cell + '/repeats/'
+		path = 'RustV1/' + self.cell + '/repeats/'
 		directory = sorted(os.listdir(path))
 		self.n_cells = len(directory)
 		assert(self.cell_num <= self.n_cells)
+		self.rpt_file = path + directory[self.cell_num-1]
 		rpt_data = h5py.File(path + directory[self.cell_num-1], 'r')
         
 		spks = rpt_data['spk_tms']
 		spks_per_frm = rpt_data['spikes_per_frm'] # nrpt x nfrm
+		self.y_rpt_lnp = spks_per_frm # for lnp
 		nrpt = spks_per_frm.shape[0]
 		self.nrpt = nrpt
         
@@ -56,8 +58,10 @@ class V1:
             
 		# stimulus
 		StimRpt = np.asarray(rpt_data['stim']).T
+		self.X_rpt_lnp = rpt_data['stim'] # formatted for lnp
 		self.framelen = .01 # 100Hz
 		self.Stim_rpt = StimRpt # un-batched stim (aka for LNP model)
+		self.rpt_nstim = len(StimRpt)
         
         
 		X_rpt = np.vstack([np.zeros([self.n_frames,StimRpt.shape[1]]), StimRpt])
@@ -79,8 +83,24 @@ class V1:
             
 		self.X_rpt = binned_rpts
         
+		self.gen_raster()
 		self.get_psth()
 		self.get_r2()
+        
+	def gen_raster(self):
+		# bin spikes and compute PSTH
+		dtbin = .001 # in seconds
+		framelen = .01
+		nsec = framelen * self.rpt_nstim
+		Tsp = self.Mtsp
+		binctrs = np.arange(dtbin/2., nsec + 3*dtbin/2., dtbin) 
+		nbin = len(binctrs)-1
+		Mraster = np.zeros((self.nrpt, nbin))
+		for jj in range(self.nrpt):
+			iisp = (Tsp[jj] > 0)
+			h,_ = np.histogram(Tsp[jj]*framelen, binctrs - dtbin/2)
+			Mraster[jj, :] = h
+		self.rpt_raster = Mraster
         
 	def get_r2(self):
 		nrpt = self.Mraster.shape[0]
@@ -185,7 +205,7 @@ class V1:
 			np.savetxt(path + 'X_test_ns_' + cc + '1.csv', self.X_test, delimiter=',')
 			np.savetxt(path + 'y_test_ns_' + cc + '1.csv', self.y_test, delimiter=',')
             
-	def convert_nn_psth(self, preds):
+	def convert_psth(self, preds):
 		sflen = .01
 		fml = np.arange(0.,self.nstim*sflen, 0.00001)
 		fml2 = np.zeros((len(fml),))
