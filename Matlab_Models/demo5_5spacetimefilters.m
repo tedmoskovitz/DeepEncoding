@@ -15,7 +15,9 @@ clear;
 clf; 
 initpaths;
 %%
-celltype = 'complex';
+celltype = 'simple';
+save_performance = true;
+save_models = false; 
 data_path = strcat('../RustV1/', celltype, '/data/');
 rpt_path = strcat('../RustV1/', celltype, '/repeats/');
 data_dir = dir(data_path);
@@ -23,27 +25,34 @@ rpt_dir = dir(rpt_path);
 n_cells = numel(data_dir)-2;
 
 nfilts_istac = 5; % number of iSTAC filters to compute
-perf_istac_r2 = zeros(n_cells, nfilts_istac); 
-perf_istac_bps = zeros(n_cells, nfilts_istac); 
+perf_istac_r2 = zeros(nfilts_istac, 1, n_cells); 
+perf_istac_bps = zeros(nfilts_istac, 1, n_cells); 
+
+% number of basis functions for CBF, RBF
+n_funcs = [3,5,10];
+num_basis_funcs = size(n_funcs,2);
 
 nfilts_cbf = 5; % number of CBF filters to compute
-perf_cbf_r2 = zeros(n_cells, nfilts_cbf); 
-perf_cbf_bps = zeros(n_cells, nfilts_cbf); 
+perf_cbf_r2 = zeros(nfilts_cbf, num_basis_funcs, n_cells); 
+perf_cbf_bps = zeros(nfilts_cbf, num_basis_funcs, n_cells); 
 
 nfilts_rbf = 3; % number of RBF filters to compute; max supported is 3
-perf_rbf_r2 = zeros(n_cells, nfilts_rbf); 
-perf_rbf_bps = zeros(n_cells, nfilts_rbf);
+perf_rbf_r2 = zeros(nfilts_rbf, num_basis_funcs, n_cells); 
+perf_rbf_bps = zeros(nfilts_rbf, num_basis_funcs, n_cells);
 
+istac_shape = [nfilts_istac, 1, n_cells]; 
+cbf_shape = [nfilts_cbf, num_basis_funcs, n_cells];
+rbf_shape = [nfilts_rbf, num_basis_funcs, n_cells];
 
 % load from checkpoint
 load_frm_chkpt = false;
 if load_frm_chkpt == true
-    perf_istac_r2 = csvread(strcat('../SavedResults/',celltype,'istac_r2.csv'));
-    perf_istac_bps = csvread(strcat('../SavedResults/',celltype,'istac_bps.csv'));
-    perf_cbf_r2 = csvread(strcat('../SavedResults/',celltype,'cbf_r2.csv'));
-    perf_cbf_bps = csvread(strcat('../SavedResults/',celltype,'cbf_bps.csv'));
-    perf_rbf_r2 = csvread(strcat('../SavedResults/',celltype,'rbf_r2.csv'));
-    perf_rbf_bps = csvread(strcat('../SavedResults/',celltype,'rbf_bps.csv'));
+    perf_istac_r2 = reshape(csvread(strcat('../SavedResults/',celltype,'istac_r2.csv')), istac_shape);
+    perf_istac_bps = reshape(csvread(strcat('../SavedResults/',celltype,'istac_bps.csv')), istac_shape);
+    perf_cbf_r2 = reshape(csvread(strcat('../SavedResults/',celltype,'cbf_r2.csv')), cbf_shape);
+    perf_cbf_bps = reshape(csvread(strcat('../SavedResults/',celltype,'cbf_bps.csv')), cbf_shape);
+    perf_rbf_r2 = reshape(csvread(strcat('../SavedResults/',celltype,'rbf_r2.csv')), rbf_shape);
+    perf_rbf_bps = reshape(csvread(strcat('../SavedResults/',celltype,'rbf_bps.csv')), rbf_shape);
 end
 
 
@@ -110,7 +119,7 @@ for c = 1:n_cells
     istac_r2s = zeros(nfilts_istac,1);
     for jj = 1:nfilts_istac
         
-        if perf_istac_bps(c,jj) == 0 % don't overwrite 
+        if perf_istac_bps(jj,1,c) == 0 % don't overwrite 
             % Fit iSTAC model nonlinearity using varying # of filters
             pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
             % compute train and test log-likelihood
@@ -119,9 +128,9 @@ for c = 1:n_cells
             r = corr2(rate_istac, sps_tst);
             istac_r2s(jj) = r * r;
             
-            perf_istac_r2(c,jj) = r*r;
+            perf_istac_r2(jj,1,c) = r*r;
             
-            perf_istac_bps(c,jj) = f2(LListac_tst(jj));
+            perf_istac_bps(jj,1,c) = f2(LListac_tst(jj));
         end
     end
     %istac_r = corr2(rate_istac, sps_tst);
@@ -167,103 +176,109 @@ for c = 1:n_cells
     
     %% == 4. ML / MID estimator for LNP with CBF (cylindrical basis func) nonlinearity
 
-    % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
-    fstructCBF.nfuncs = 3; % number of basis functions for nonlinearity
-    fstructCBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
-    fstructCBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
-    fstructCBF.nlfuntype = 'cbf';
-    
-    % Fit the model (iteratively adding one filter at a time)
-    optArgs = {'display','iter'};
-    [ppcbf,negLcbf,ppcbf_array] = fitLNP_multifiltsCBF_ML(pp0,Stim_tr,sps_tr,nfilts_cbf,fstructCBF,istacFilts,optArgs);
-    
-    % Compute training and test log-likelihood for each sized model
-    LLcbf_tr = zeros(nfilts_cbf,1);
-    LLcbf_tst = zeros(nfilts_cbf,1);
-    cbf_r2s = zeros(nfilts_cbf,1);
-    for jj = 1:nfilts_cbf
+    for nf = 1:num_basis_funcs
+        % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
+        fprintf("Fitting models with %d basis functions...", n_funcs(1,nf)); 
+        fstructCBF.nfuncs = n_funcs(1,nf); % number of basis functions for nonlinearity
+        fstructCBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
+        fstructCBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
+        fstructCBF.nlfuntype = 'cbf';
         
-        if perf_cbf_bps(c,jj) == 0
+        % Fit the model (iteratively adding one filter at a time)
+        optArgs = {'display','iter'};
+        [ppcbf,negLcbf,ppcbf_array] = fitLNP_multifiltsCBF_ML(pp0,Stim_tr,sps_tr,nfilts_cbf,fstructCBF,istacFilts,optArgs);
         
-            % compute train and test log-likelihood
-            LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
-            [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
-            r = corr2(rate_cbf, sps_tst);
-            cbf_r2s(jj) = r * r;
+        % Compute training and test log-likelihood for each sized model
+        LLcbf_tr = zeros(nfilts_cbf,1);
+        LLcbf_tst = zeros(nfilts_cbf,1);
+        cbf_r2s = zeros(nfilts_cbf,1);
+        for jj = 1:nfilts_cbf
             
-            perf_cbf_r2(c,jj) = r*r;
-            
-            perf_cbf_bps(c,jj) = f2(LLcbf_tst(jj));
-        
+            if perf_cbf_bps(jj,nf,c) == 0
+                
+                % compute train and test log-likelihood
+                LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
+                [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
+                r = corr2(rate_cbf, sps_tst);
+                cbf_r2s(jj) = r * r;
+                
+                perf_cbf_r2(jj,nf,c) = r*r;
+                
+                perf_cbf_bps(jj,nf,c) = f2(LLcbf_tst(jj));
+                
+            end
         end
+        
+        % R-Squared
+        %cbf_r = corr2(rate_cbf, sps_tst);
+        %cbf_r2 = cbf_r * cbf_r;
+        
+        % save filters
+        filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
+        filt_dir = filt_dir + "/5f_";
+        
+        filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
+        
+        
+        rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
+        %csvwrite(filt_dir + "cbf.csv", rfilt);
+        
+        
+        
+        % Determine which of these models is best based on xv log-likelihood
+        [~,imax_cbf] = max(LLcbf_tst);
+        fprintf('LNP-CBF: best performance for model with %d filters\n',imax_cbf);
+        ppcbf= ppcbf_array{imax_cbf}; % select this model
+        
+        % Compute true filters reconstructed in basis of CBF filter estimates
+        % (using 5-filter model)
+        filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);  % filter estimates
     end
-    
-    % R-Squared
-    %cbf_r = corr2(rate_cbf, sps_tst);
-    %cbf_r2 = cbf_r * cbf_r;
-    
-    % save filters
-%     filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
-%     filt_dir = filt_dir + "/5f_";
-%     
-%     filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
-%     
-%     
-%     rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
-%     %csvwrite(filt_dir + "cbf.csv", rfilt);
-%     
-%     
-    
-    % Determine which of these models is best based on xv log-likelihood
-    [~,imax_cbf] = max(LLcbf_tst);
-    fprintf('LNP-CBF: best performance for model with %d filters\n',imax_cbf);
-    ppcbf= ppcbf_array{imax_cbf}; % select this model
-    
-    % Compute true filters reconstructed in basis of CBF filter estimates
-    % (using 5-filter model)
-    filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);  % filter estimates
 
     %% == 5. ML / MID 2:  ML estimator for LNP with RBF (radial basis func) nonlinearity
 
-    % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
-    fstructRBF.nfuncs = 3; % number of basis functions for nonlinearity
-    fstructRBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
-    fstructRBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
-    fstructRBF.nlfuntype = 'rbf';
-    
-    % Fit the model (iteratively adding one filter at a time)
-    [pprbf,negLrbf,pprbf_array] = fitLNP_multifiltsRBF_ML(pp0,Stim_tr,sps_tr,nfilts_rbf,fstructRBF,istacFilts);
-    
-    % Compute training and test log-likelihood for each sized model
-    LLrbf_tr = zeros(nfilts_rbf,1);
-    LLrbf_tst = zeros(nfilts_rbf,1);
-    rbf_r2s = zeros(nfilts_rbf,1);
-    for jj = 1:nfilts_rbf
+    for nf = 1:num_basis_funcs
+        % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
+        fprintf("Fitting models with %d basis functions...", n_funcs(1,nf)); 
+        fstructRBF.nfuncs = n_funcs(1,nf); % number of basis functions for nonlinearity
+        fstructRBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
+        fstructRBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
+        fstructRBF.nlfuntype = 'rbf';
         
-        if perf_rbf_bps(c,jj) == 0
+        % Fit the model (iteratively adding one filter at a time)
+        [pprbf,negLrbf,pprbf_array] = fitLNP_multifiltsRBF_ML(pp0,Stim_tr,sps_tr,nfilts_rbf,fstructRBF,istacFilts);
         
-            % compute train and test log-likelihood
-            LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
-            [LLrbf_tst(jj),rate_rbf] = logli_LNP(pprbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
-            r = corr2(rate_rbf, sps_tst);
-            rbf_r2s(jj) = r * r;
+        % Compute training and test log-likelihood for each sized model
+        LLrbf_tr = zeros(nfilts_rbf,1);
+        LLrbf_tst = zeros(nfilts_rbf,1);
+        rbf_r2s = zeros(nfilts_rbf,1);
+        for jj = 1:nfilts_rbf
             
-            perf_rbf_r2(c,jj) = r * r;
-            
-            perf_rbf_bps(c,jj) = f2(LLrbf_tst(jj));
-            
+            if perf_rbf_bps(jj,nf,c) == 0
+                
+                % compute train and test log-likelihood
+                LLrbf_tr(jj) = logli_LNP(pprbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
+                [LLrbf_tst(jj),rate_rbf] = logli_LNP(pprbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
+                r = corr2(rate_rbf, sps_tst);
+                rbf_r2s(jj) = r * r;
+                
+                perf_rbf_r2(jj,nf,c) = r * r;
+                
+                perf_rbf_bps(jj,nf,c) = f2(LLrbf_tst(jj));
+                
+            end
         end
+        
+        % R-squared
+        %rbf_r = corr2(rate_rbf, sps_tst);
+        %rbf_r2 = rbf_r * rbf_r;
+        
+        % Determine which of these models is best based on xv log-likelihood
+        [~,imax_rbf] = max(LLrbf_tst);
+        fprintf('LNP-RBF: best performance for model with %d filters\n',imax_rbf);
+        pprbf = pprbf_array{imax_rbf}; % select this model
+    
     end
-    
-    % R-squared
-    %rbf_r = corr2(rate_rbf, sps_tst);
-    %rbf_r2 = rbf_r * rbf_r;
-    
-    % Determine which of these models is best based on xv log-likelihood
-    [~,imax_rbf] = max(LLrbf_tst);
-    fprintf('LNP-RBF: best performance for model with %d filters\n',imax_rbf);
-    pprbf = pprbf_array{imax_rbf}; % select this model
-    
     % Compute true filters reconstructed in basis of RBF filter estimates
     %%
     %filts_rbf = reshape(pprbf.k,nkt*nkx,size(pprbf.k,3));  % filter estimates
@@ -467,12 +482,22 @@ for c = 1:n_cells
     % zlabel('spike rate (sps/sec)'); title('2D nn nonlinearity');
     %
     
-    disp("Saving Checkpoint..."); 
-    csvwrite(strcat('../SavedResults/',celltype,'_istac_r2.csv'), perf_istac_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'_istac_bps.csv'), perf_istac_bps);
-    csvwrite(strcat('../SavedResults/',celltype,'_cbf_r2.csv'), perf_cbf_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'_cbf_bps.csv'), perf_cbf_bps);
-    csvwrite(strcat('../SavedResults/',celltype,'_rbf_r2.csv'), perf_rbf_r2);
-    csvwrite(strcat('../SavedResults/',celltype,'_rbf_bps.csv'), perf_rbf_bps);
+    if save_performance == true
+        disp("Saving Checkpoint...");
+        csvwrite(strcat('../SavedResults/',celltype,'_istac_r2.csv'), reshape(perf_istac_r2, [],1));
+        csvwrite(strcat('../SavedResults/',celltype,'_istac_bps.csv'), reshape(perf_istac_bps, [],1));
+        csvwrite(strcat('../SavedResults/',celltype,'_cbf_r2.csv'), reshape(perf_cbf_r2, [],1));
+        csvwrite(strcat('../SavedResults/',celltype,'_cbf_bps.csv'), perf_cbf_bps, [],1);
+        csvwrite(strcat('../SavedResults/',celltype,'_rbf_r2.csv'), perf_rbf_r2, [],1);
+        csvwrite(strcat('../SavedResults/',celltype,'_rbf_bps.csv'), perf_rbf_bps, [],1);
+    end
+    
+    if save_models == true
+        disp("Saving Best Models...");
+        save(strcat("saved/",celltype,"_istac_model.mat"), '-struct', 'pp_istac')
+        save(strcat("saved/",celltype,"_cbf_model.mat"), '-struct', 'ppcbf')
+        save(strcat("saved/",celltype,"_rbf_model.mat"), '-struct', 'pprbf')
+    end
+    
     
 end

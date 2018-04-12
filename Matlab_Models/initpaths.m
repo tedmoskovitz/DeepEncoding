@@ -6,7 +6,7 @@ addpath tools_iSTAC   % directory for iSTAC (used to initialize filter estimates
 addpath tools_LNPfitting  % directory for MID code
 addpath tools_simdata;    % directory for simulating data (for demo code)
 addpath nlfuns;   % directory for nonlinearities
-addpath minFunc_2012; % directory for minFunc gradient descent package
+addpath(genpath(pwd)); % directory for minFunc gradient descent package
 
 
 if ~exist('simdatadir','dir')
