@@ -7,11 +7,15 @@ from keras.optimizers import RMSprop, SGD, Adam
 from keras.constraints import maxnorm
 from keras.callbacks import EarlyStopping
 
-def gen_fc_model(H, dim=20, L=0, verbose=True): 
+def gen_fc_model(H, dim=20, L=0, verbose=True, LNP=0): 
     """generate a full connected network with hidden size H and depth L"""
     model = Sequential()
-    model.add(Dense(H, input_dim=dim))
-    model.add(Activation('softplus'))
+    if LNP > 0: # pre-DNN filters
+        model.add(Dense(LNP, input_dim=dim))
+        model.add(Dense(H, activation='softplus'))
+    else:
+        model.add(Dense(H, input_dim=dim, activation='softplus'))
+        
     if H >= 50 and H < 100: 
         model.add(Dropout(.1))
     elif H >= 100:
@@ -35,17 +39,20 @@ def gen_fc_model(H, dim=20, L=0, verbose=True):
         
     return model
 
-def gen_rnn_model(H, dim=20, n_frames=16, L=0, verbose=True, use_cudnn=True):
+def gen_rnn_model(H, dim=20, n_frames=16, L=0, verbose=True, use_cudnn=True, LNP=0):
     """generate an LSTM network"""
     model = Sequential()
     if L == 0: ret_seqs = False;
     else: ret_seqs = True;
-    
         
     if use_cudnn: lstm = CuDNNLSTM;
     else: lstm = LSTM;
         
-    model.add(lstm(H, input_shape=(n_frames, dim), return_sequences=ret_seqs))
+    if LNP > 0: 
+        model.add(Dense(LNP, input_dim=dim)); #??
+        model.add(lstm(H, input_shape=(n_frames, LNP), return_sequences=ret_seqs))
+    else: 
+        model.add(lstm(H, input_shape=(n_frames, dim), return_sequences=ret_seqs))
     
     for i in range(L):
         if i == L-1: ret_seqs = False;
@@ -62,11 +69,15 @@ def gen_rnn_model(H, dim=20, n_frames=16, L=0, verbose=True, use_cudnn=True):
     model.compile(loss=poiss_full, optimizer=adam) 
     return model
 
-def gen_cnn_model(H, L=0, dim=1, n_frames=16, ksize=7, verbose=True):
+def gen_cnn_model(H, L=0, dim=1, n_frames=16, ksize=7, verbose=True, LNP=0):
     """generate a 1D CNN"""
     model = Sequential()
     
-    model.add(Conv1D(H, ksize, activation='softplus', padding='same', input_shape=(n_frames, dim)))
+    if LNP > 0:
+        model.add(Dense(LNP, input_dim=dim))
+        model.add(Conv1D(H, ksize, activation='softplus', padding='same', input_shape=(n_frames, LNP)))
+    else:
+        model.add(Conv1D(H, ksize, activation='softplus', padding='same', input_shape=(n_frames, dim)))
     model.add(Conv1D(H, ksize, activation='softplus', padding='same'))
     
     if L > 0:
