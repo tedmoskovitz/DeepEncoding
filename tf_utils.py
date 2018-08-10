@@ -7,6 +7,9 @@ import os.path
 import tensorflow as tf
 import scipy as sp
 import scipy.misc as spm
+from keras.models import Sequential, load_model
+from keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
 
 def neglogli(preds, actual):
     """poisson negative log likelihood"""
@@ -48,12 +51,26 @@ def r2(preds, actual):
     rsq = r ** 2
     return r,rsq
 
+def L2_func(x):
+    """compute L2 norm of input"""
+    return K.expand_dims(K.sqrt(K.sum(K.pow(x,2), axis=1)))
+
 def restore_performance_checkpt(path):
     """load a performance checkpoint, if it exists"""
     if os.path.exists(path) and os.path.isfile(path):
         performance = np.genfromtxt(path, delimiter=',')
         return performance
     else: print ('File Not Found Error: ' + path); return None;
+    
+def get_nn_model(celltype, mtype, metric='r2', verbose=True, filts=False, cell=0, fnum=0):
+    """load the specified (trained) model"""
+    if not filts: path = 'SavedModels/%s_best_%s_%s' % (celltype, mtype, metric);
+    else: path = 'SavedModels/filts_%s_best_%s_%s' % (celltype, mtype, metric);
+    if cell >= 1: path += '_cell%s' % (str(cell));
+    if fnum > 0: path += '_f%d' % (fnum); 
+    path += '.h5'
+    if verbose: print ('loading %s...' % (mtype)); 
+    return load_model(path, custom_objects={'poiss_full': poiss_full})
 
 class color:
     """color class for printing colored text"""
