@@ -17,7 +17,7 @@ initpaths;
 %%
 celltype = 'complex';
 save_performance = false;
-save_models = true; 
+save_models = false; 
 data_path = strcat('../RustV1/', celltype, '/data/');
 rpt_path = strcat('../RustV1/', celltype, '/repeats/');
 data_dir = dir(data_path);
@@ -30,7 +30,7 @@ perf_istac_bps = zeros(nfilts_istac, 1, n_cells);
 
 % number of basis functions for CBF, RBF
 % n_funcs = [3,5,10];
-n_funcs = [3]; 
+n_funcs = [3,5,10]; 
 num_basis_funcs = size(n_funcs,2);
 
 nfilts_cbf = 5; % number of CBF filters to compute
@@ -58,7 +58,7 @@ if load_frm_chkpt == true
 end
 
 
-for c = 4:4%1:n_cells
+for c = 1:n_cells
 
     disp(strcat("Starting Cell ", string(c), " of ", string(n_cells)));
     
@@ -74,7 +74,7 @@ for c = 4:4%1:n_cells
     sps_tst = spikes_per_frm(:,round(trainfrac*ln):end)';
     %sps_tst(sps_tst > 1) = 1;
     RefreshRate = .01;
-    width = size(Stim_tr,1); % simple 16 complex 24
+    width = size(Stim_tr,1); 
     
     slen_tr = size(Stim_tr,1);   % length of training stimulus / spike train
     slen_tst = size(Stim_tst,1); % length of test stimulus / spike train
@@ -216,13 +216,13 @@ for c = 4:4%1:n_cells
         cbf_r2 = cbf_r * cbf_r;
         
         % save filters
-        filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
-        filt_dir = filt_dir + "/5f_";
+        %filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
+        %filt_dir = filt_dir + "/5f_";
         
-        filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
+        %filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
         
         
-        rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
+        %rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
         %csvwrite(filt_dir + "cbf.csv", rfilt);
         
         
@@ -238,13 +238,13 @@ for c = 4:4%1:n_cells
         filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);  % filter estimates
     end
     
-    if save_performance == true
-        disp("Saving Checkpoint...");
-        csvwrite(strcat('../SavedResults/',celltype,'_istac_r2.csv'), reshape(perf_istac_r2, [],1));
-        csvwrite(strcat('../SavedResults/',celltype,'_istac_bps.csv'), reshape(perf_istac_bps, [],1));
-        csvwrite(strcat('../SavedResults/',celltype,'_cbf_r2.csv'), reshape(perf_cbf_r2, [],1));
-        csvwrite(strcat('../SavedResults/',celltype,'_cbf_bps.csv'), perf_cbf_bps, [],1);
-    end
+%     if save_performance == true
+%         disp("Saving Checkpoint...");
+%         csvwrite(strcat('../SavedResults/',celltype,'_istac_r2.csv'), reshape(perf_istac_r2, [],1));
+%         csvwrite(strcat('../SavedResults/',celltype,'_istac_bps.csv'), reshape(perf_istac_bps, [],1));
+%         csvwrite(strcat('../SavedResults/',celltype,'_cbf_r2.csv'), reshape(perf_cbf_r2, [],1));
+%         csvwrite(strcat('../SavedResults/',celltype,'_cbf_bps.csv'), perf_cbf_bps, [],1);
+%     end
 % 
 %     %% == 5. ML / MID 2:  ML estimator for LNP with RBF (radial basis func) nonlinearity
 % 
@@ -507,7 +507,7 @@ for c = 4:4%1:n_cells
 %     
     if save_models == true
         disp("Saving Best Models...");
-        %save(strcat("saved/",celltype,"_istac_model.mat"), '-struct', 'pp_istac')
+        save(strcat("saved/",celltype,"_istac_model.mat"), '-struct', 'pp_istac')
         save(strcat("saved/",celltype,"_cbf_model.mat"), '-struct', 'ppcbf')
         %save(strcat("saved/",celltype,"_rbf_model.mat"), '-struct', 'pprbf')
     end
