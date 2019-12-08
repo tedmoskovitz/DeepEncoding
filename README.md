@@ -1,3 +1,3 @@
 # DeepEncoding
 
-Using deep learning to study neural encoding in the early primate visual system. 
+Deep and LNP models for neural encoding in the early visual system. 
