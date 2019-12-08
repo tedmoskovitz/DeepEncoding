@@ -56,10 +56,9 @@ if load_frm_chkpt == true
     perf_rbf_r2 = reshape(csvread(strcat('../SavedResults/',celltype,'_rbf_r2.csv')), rbf_shape);
     perf_rbf_bps = reshape(csvread(strcat('../SavedResults/',celltype,'_rbf_bps.csv')), rbf_shape);
 end
-
+%%
 
 for c = 1:n_cells
-
     disp(strcat("Starting Cell ", string(c), " of ", string(n_cells)));
     
     % get training/test data
@@ -99,7 +98,7 @@ for c = 1:n_cells
     f1 = @(x)((x-LL0_tr)/nsp_tr/log(2)); % compute training single-spike info
     f2 = @(x)((x-LL0_tst)/nsp_tst/log(2)); % compute test single-spike info
     % (Divide by log 2 to get 'bits' instead of 'nats')
-    
+%%   
 
     %% == 2. Compute iSTAC estimator (for comparison sake)
     
@@ -108,135 +107,140 @@ for c = 1:n_cells
     
     % Compute STA and STC
     [sta,stc,rawmu,rawcov] = simpleSTC(Stim_tr,sps_tr,nkt);  % compute STA and STC
+    path = strcat('../SavedFilters/', celltype, '_stc_cell', string(c), '.csv');
+    csvwrite(path, stc);
     
-    % Compute iSTAC estimator
-    fprintf('\nComputing iSTAC estimate\n');
-    [istacFilts,vals,DD] = compiSTAC(sta(:),stc,rawmu,rawcov,nfilts_istac); % find iSTAC filters
-    
-    
-    
-    % Compute training and test log-likelihood for each sized model
-    LListac_tr = zeros(nfilts_istac,1);
-    LListac_tst = zeros(nfilts_istac,1);
-    istac_r2s = zeros(nfilts_istac,1);
-    for jj = 1:nfilts_istac
-        
-        if perf_istac_bps(jj,1,c) == 0 % don't overwrite 
-            % Fit iSTAC model nonlinearity using varying # of filters
-            pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
-            % compute train and test log-likelihood
-            LListac_tr(jj) = logli_LNP(pp_istac,Stim_tr,sps_tr); % training log-likelihood
-            [LListac_tst(jj),rate_istac] = logli_LNP(pp_istac,Stim_tst,sps_tst); % test log-likelihood
-            r = corr2(rate_istac, sps_tst);
-            istac_r2s(jj) = r * r;
-            
-            perf_istac_r2(jj,1,c) = r*r;
-            
-            perf_istac_bps(jj,1,c) = f2(LListac_tst(jj));
-        end
-    end
-    istac_r = corr2(rate_istac, sps_tst);
-    istac_r2 = istac_r * istac_r; % R2
-
-    
-    % save filters
-%     filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
-%     filt_dir = filt_dir + "/5f_";
+    path2 = strcat('../SavedFilters/', celltype, '_sta_cell', string(c), '.csv');
+    csvwrite(path2, sta);
+% %%    
+%     % Compute iSTAC estimator
+%     fprintf('\nComputing iSTAC estimate\n');
+%     [istacFilts,vals,DD] = compiSTAC(sta(:),stc,rawmu,rawcov,nfilts_istac); % find iSTAC filters
 %     
-%     rfilt = reshape(istacFilts(:,1:nfilts_istac), [nfilts_istac,width*nkt]);
-%     %csvwrite(filt_dir + "istac.csv", rfilt);
 %     
-%    csvwrite(strcat('../SavedFilters/',celltype,'_istac_filters_cell',string(c),'.csv'), istacFilts);
-%     %% -----  Plot filters ------------
-%     rs = @(x)(reshape(x,nkt,nkx)); % reshape as image
 %     
-%     clf;
-%     subplot(231);
-%     tt = -nkt+1:0; xx = 1:nkx;
+%     % Compute training and test log-likelihood for each sized model
+%     LListac_tr = zeros(nfilts_istac,1);
+%     LListac_tst = zeros(nfilts_istac,1);
+%     istac_r2s = zeros(nfilts_istac,1);
+%     for jj = 1:nfilts_istac
+%         
+%         if perf_istac_bps(jj,1,c) == 0 % don't overwrite 
+%             % Fit iSTAC model nonlinearity using varying # of filters
+%             pp_istac = fitNlin_expquad_ML(Stim_tr,sps_tr,istacFilts(:,1:jj),RefreshRate); % LNP model struct
+%             % compute train and test log-likelihood
+%             LListac_tr(jj) = logli_LNP(pp_istac,Stim_tr,sps_tr); % training log-likelihood
+%             [LListac_tst(jj),rate_istac] = logli_LNP(pp_istac,Stim_tst,sps_tst); % test log-likelihood
+%             r = corr2(rate_istac, sps_tst);
+%             istac_r2s(jj) = r * r;
+%             
+%             perf_istac_r2(jj,1,c) = r*r;
+%             
+%             perf_istac_bps(jj,1,c) = f2(LListac_tst(jj));
+%         end
+%     end
+%     istac_r = corr2(rate_istac, sps_tst);
+%     istac_r2 = istac_r * istac_r; % R2
+% 
 %     
-    %% == 3. Set up temporal basis for stimulus filters (for ML / MID estimators)
-    
-    % Set up fitting structure and compute initial logli
-    mask = [];  % time range to use for fitting (set to [] if not needed).
-    pp0 = makeFittingStruct_LNP(sta,RefreshRate,mask); % initialize param struct
-    
-    % == Set up temporal basis for representing filters  ====
-    % (try changing these params until basis can accurately represent STA).
-    ktbasprs.neye = 0; % number of "identity"-like basis vectors
-    ktbasprs.ncos = 6; % number of raised cosine basis vectors (DETERMINES BASIS DIMENSIONALITY)
-    ktbasprs.kpeaks = [0 3*nkt/4]; % location of 1st and last basis vector bump
-    ktbasprs.b = 50; % determines how nonlinearly to stretch basis (higher => more linear)
-    [ktbas, ktbasis] = makeBasis_StimKernel(ktbasprs, nkt); % make basis
-    filtprs_basis = (ktbas'*ktbas)\(ktbas'*sta);  % filter represented in new basis
-    sta_basis = ktbas*filtprs_basis;
-    
-    % Insert filter basis into fitting struct
-    pp0.k = sta_basis; % insert sta filter
-    pp0.kt = filtprs_basis; % filter coefficients (in temporal basis)
-    pp0.ktbas = ktbas; % temporal basis
-    pp0.ktbasprs = ktbasprs;  % parameters that define the temporal basis
-    
-    %% == 4. ML / MID estimator for LNP with CBF (cylindrical basis func) nonlinearity
-    
-    for nf = 1:num_basis_funcs
-        % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
-        fprintf("Fitting models with %d basis functions on Cell %d...", n_funcs(1,nf), c); 
-        fstructCBF.nfuncs = n_funcs(1,nf); % number of basis functions for nonlinearity
-        fstructCBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
-        fstructCBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
-        fstructCBF.nlfuntype = 'cbf';
-        
-        % Fit the model (iteratively adding one filter at a time)
-        optArgs = {'display','iter'};
-        [ppcbf,negLcbf,ppcbf_array] = fitLNP_multifiltsCBF_ML(pp0,Stim_tr,sps_tr,nfilts_cbf,fstructCBF,istacFilts,optArgs);
-        
-        % Compute training and test log-likelihood for each sized model
-        LLcbf_tr = zeros(nfilts_cbf,1);
-        LLcbf_tst = zeros(nfilts_cbf,1);
-        cbf_r2s = zeros(nfilts_cbf,1);
-        for jj = 1:nfilts_cbf
-            
-            if perf_cbf_bps(jj,nf,c) == 0
-                
-                % compute train and test log-likelihood
-                LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
-                [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
-                r = corr2(rate_cbf, sps_tst);
-                cbf_r2s(jj) = r * r;
-                
-                perf_cbf_r2(jj,nf,c) = r*r;
-                
-                perf_cbf_bps(jj,nf,c) = f2(LLcbf_tst(jj));
-                
-            end
-        end
-        
-        % R-Squared
-        cbf_r = corr2(rate_cbf, sps_tst);
-        cbf_r2 = cbf_r * cbf_r;
-        
-        % save filters
-        %filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
-        %filt_dir = filt_dir + "/5f_";
-        
-        %filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
-        
-        
-        %rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
-        %csvwrite(filt_dir + "cbf.csv", rfilt);
-        
-        
-        
-        % Determine which of these models is best based on xv log-likelihood
-        [~,imax_cbf] = max(LLcbf_tst);
-        fprintf('LNP-CBF: best performance for model with %d filters\n',imax_cbf);
-        %ppcbf= ppcbf_array{imax_cbf}; % select this model
-        ppcbf = ppcbf_array{5};
-        
-        % Compute true filters reconstructed in basis of CBF filter estimates
-        % (using 5-filter model)
-        filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);  % filter estimates
-    end
+%     % save filters
+% %     filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
+% %     filt_dir = filt_dir + "/5f_";
+% %     
+% %     rfilt = reshape(istacFilts(:,1:nfilts_istac), [nfilts_istac,width*nkt]);
+% %     %csvwrite(filt_dir + "istac.csv", rfilt);
+% %     
+% %    csvwrite(strcat('../SavedFilters/',celltype,'_istac_filters_cell',string(c),'.csv'), istacFilts);
+% %     %% -----  Plot filters ------------
+% %     rs = @(x)(reshape(x,nkt,nkx)); % reshape as image
+% %     
+% %     clf;
+% %     subplot(231);
+% %     tt = -nkt+1:0; xx = 1:nkx;
+% %     
+%     %% == 3. Set up temporal basis for stimulus filters (for ML / MID estimators)
+%     
+%     % Set up fitting structure and compute initial logli
+%     mask = [];  % time range to use for fitting (set to [] if not needed).
+%     pp0 = makeFittingStruct_LNP(sta,RefreshRate,mask); % initialize param struct
+%     
+%     % == Set up temporal basis for representing filters  ====
+%     % (try changing these params until basis can accurately represent STA).
+%     ktbasprs.neye = 0; % number of "identity"-like basis vectors
+%     ktbasprs.ncos = 6; % number of raised cosine basis vectors (DETERMINES BASIS DIMENSIONALITY)
+%     ktbasprs.kpeaks = [0 3*nkt/4]; % location of 1st and last basis vector bump
+%     ktbasprs.b = 50; % determines how nonlinearly to stretch basis (higher => more linear)
+%     [ktbas, ktbasis] = makeBasis_StimKernel(ktbasprs, nkt); % make basis
+%     filtprs_basis = (ktbas'*ktbas)\(ktbas'*sta);  % filter represented in new basis
+%     sta_basis = ktbas*filtprs_basis;
+%     
+%     % Insert filter basis into fitting struct
+%     pp0.k = sta_basis; % insert sta filter
+%     pp0.kt = filtprs_basis; % filter coefficients (in temporal basis)
+%     pp0.ktbas = ktbas; % temporal basis
+%     pp0.ktbasprs = ktbasprs;  % parameters that define the temporal basis
+%     
+%     %% == 4. ML / MID estimator for LNP with CBF (cylindrical basis func) nonlinearity
+%     
+%     for nf = 1:num_basis_funcs
+%         % Set parameters for cylindrical basis funcs (CBFs) and initialize fit
+%         fprintf("Fitting models with %d basis functions on Cell %d...", n_funcs(1,nf), c); 
+%         fstructCBF.nfuncs = n_funcs(1,nf); % number of basis functions for nonlinearity
+%         fstructCBF.epprob = [.01, 0.99]; % cumulative probability outside outermost basis function peaks
+%         fstructCBF.nloutfun = @logexp1;  % log(1+exp(x)) % nonlinear stretching function
+%         fstructCBF.nlfuntype = 'cbf';
+%         
+%         % Fit the model (iteratively adding one filter at a time)
+%         optArgs = {'display','iter'};
+%         [ppcbf,negLcbf,ppcbf_array] = fitLNP_multifiltsCBF_ML(pp0,Stim_tr,sps_tr,nfilts_cbf,fstructCBF,istacFilts,optArgs);
+%         
+%         % Compute training and test log-likelihood for each sized model
+%         LLcbf_tr = zeros(nfilts_cbf,1);
+%         LLcbf_tst = zeros(nfilts_cbf,1);
+%         cbf_r2s = zeros(nfilts_cbf,1);
+%         for jj = 1:nfilts_cbf
+%             
+%             if perf_cbf_bps(jj,nf,c) == 0
+%                 
+%                 % compute train and test log-likelihood
+%                 LLcbf_tr(jj) = logli_LNP(ppcbf_array{jj},Stim_tr,sps_tr); % training log-likelihood
+%                 [LLcbf_tst(jj),rate_cbf] = logli_LNP(ppcbf_array{jj},Stim_tst,sps_tst); % test log-likelihood
+%                 r = corr2(rate_cbf, sps_tst);
+%                 cbf_r2s(jj) = r * r;
+%                 
+%                 perf_cbf_r2(jj,nf,c) = r*r;
+%                 
+%                 perf_cbf_bps(jj,nf,c) = f2(LLcbf_tst(jj));
+%                 
+%             end
+%         end
+%         
+%         % R-Squared
+%         cbf_r = corr2(rate_cbf, sps_tst);
+%         cbf_r2 = cbf_r * cbf_r;
+%         
+%         % save filters
+%         %filt_dir = "/Users/TedMoskovitz/Thesis/Models/NeuralNets/V1/LNP_filters/complex1";
+%         %filt_dir = filt_dir + "/5f_";
+%         
+%         %filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);
+%         
+%         
+%         %rfilt = reshape(filts_cbf(:,1:nfilts_cbf), [nfilts_cbf,nkx*nkt]);
+%         %csvwrite(filt_dir + "cbf.csv", rfilt);
+%         
+%         
+%         
+%         % Determine which of these models is best based on xv log-likelihood
+%         [~,imax_cbf] = max(LLcbf_tst);
+%         fprintf('LNP-CBF: best performance for model with %d filters\n',imax_cbf);
+%         %ppcbf= ppcbf_array{imax_cbf}; % select this model
+%         ppcbf = ppcbf_array{5};
+%         
+%         % Compute true filters reconstructed in basis of CBF filter estimates
+%         % (using 5-filter model)
+%         filts_cbf = reshape(ppcbf_array{end}.k,nkt*nkx,nfilts_cbf);  % filter estimates
+%     end
     
 %     if save_performance == true
 %         disp("Saving Checkpoint...");
@@ -505,12 +509,12 @@ for c = 1:n_cells
 %         csvwrite(strcat('../SavedResults/',celltype,'_rbf_bps.csv'), reshape(perf_rbf_bps, [],1));
 %     end
 %     
-    if save_models == true
-        disp("Saving Best Models...");
-        save(strcat("saved/",celltype,"_istac_model.mat"), '-struct', 'pp_istac')
-        save(strcat("saved/",celltype,"_cbf_model.mat"), '-struct', 'ppcbf')
-        %save(strcat("saved/",celltype,"_rbf_model.mat"), '-struct', 'pprbf')
-    end
+%     if save_models == true
+%         disp("Saving Best Models...");
+%         save(strcat("saved/",celltype,"_istac_model.mat"), '-struct', 'pp_istac')
+%         save(strcat("saved/",celltype,"_cbf_model.mat"), '-struct', 'ppcbf')
+%         %save(strcat("saved/",celltype,"_rbf_model.mat"), '-struct', 'pprbf')
+%     end
     
     
 end

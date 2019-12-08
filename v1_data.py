@@ -12,7 +12,8 @@ class V1:
 
 	def __init__(self, cell, cell_num, 
                  n_frames=16, spk_thresh=None, flatten=True,
-                 shuff=True, gen_new=True, verbose=True):
+                 shuff=True, gen_new=True, verbose=True, extra=False,
+                 gen_rpts=True):
 		"""
 		cell = 'simple' or 'complex'
 		spk_thresh if want to threshold spike counts
@@ -24,11 +25,13 @@ class V1:
 		self.spk_thresh = spk_thresh
 		self.n_cells = -1
 		self.n_frames = n_frames
+		self.extra = extra # for extra simple cells
 		if gen_new:
 			if verbose: print ('building data...');
 			self.generate_new()
-			if verbose: print ('fetching repeat data...');
-			self.gen_rpt()
+			if gen_rpts:
+				if verbose: print ('fetching repeat data...');
+				self.gen_rpt()
 		else: 
 			print ('retrieving data...')
 			print ('This action is unsupported at this time.')
@@ -129,7 +132,7 @@ class V1:
         
 
 	def generate_new(self):
-		path = './RustV1/' + self.cell + '/data/'
+		path = './RustV1/' + self.cell + '/data/' if not self.extra else './RustV1/' + self.cell + '/extra/' #only for simple!
 		directory  = sorted(os.listdir(path))
 		self.n_cells = len(directory)
 		assert(self.cell_num <= self.n_cells)
